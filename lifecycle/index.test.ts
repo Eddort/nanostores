@@ -273,19 +273,16 @@ test('has onAction listener', async () => {
 
   is('action' in store, false)
 
-  let unbind = onAction(
-    store,
-    ({ actionName, onError, onEnd }) => {
-      events.push(actionName)
-      onError(({ error }) => {
-        events.push('error')
-        errors.push(error.message)
-      })
-      onEnd(() => {
-        events.push('end')
-      })
-    }
-  )
+  let unbind = onAction(store, ({ actionName, onError, onEnd }) => {
+    events.push(actionName)
+    onError(({ error }) => {
+      events.push('error')
+      errors.push(error.message)
+    })
+    onEnd(() => {
+      events.push('end')
+    })
+  })
   is('action' in store, true)
 
   try {
@@ -300,6 +297,55 @@ test('has onAction listener', async () => {
   equal(events, ['errorAction', 'error', 'end'])
   equal(errors, ['error-in-action'])
 
+  unbind()
+})
+
+test('onAction race', async () => {
+  let errors: string[] = []
+  let events: string[] = []
+  let store = atom(0)
+  let raceDelay = 0
+
+  let unbind = onAction(store, ({ actionName, onError, onEnd }) => {
+    events.push(`${actionName}-${raceDelay}`)
+    onError(({ error }) => {
+      events.push('error')
+      errors.push(error.message)
+    })
+    onEnd(() => {
+      events.push('end')
+    })
+  })
+
+  onSet(store, ({ newValue }) => {
+    events.push(newValue.toString())
+  })
+
+  let myAction = action(store, 'my-store', async (s, d) => {
+    raceDelay = d
+    await delay(d)
+    s.set(d)
+  })
+
+  myAction(40)
+  myAction(10)
+
+  await delay(50)
+
+  equal(events, [
+    'my-store-40',
+    'my-store-10',
+    '10',
+    'end',
+    'end',
+    '40',
+    'end',
+    'end'
+  ])
+  /**
+   * Correct result
+   */
+  // equal(events, ['my-store-40', '40', 'end', 'my-store-10', '10', 'end'])
   unbind()
 })
 
