@@ -16,6 +16,7 @@ import {
   atom,
   map
 } from '../index.js'
+import { actionId } from '../action/index.js'
 
 test('has onStart and onStop listeners', () => {
   let events: string[] = []
@@ -285,14 +286,15 @@ test('has onAction listener', async () => {
   })
   is('action' in store, true)
 
-  let unbind2 = onAction(
-    store,
-    ({ actionName, onError, onEnd }) => {
-      events.push(actionName)
-      onError(() => { events.push('error') })
-      onEnd(() => { events.push('end') })
-    }
-  )
+  let unbind2 = onAction(store, ({ actionName, onError, onEnd }) => {
+    events.push(actionName)
+    onError(() => {
+      events.push('error')
+    })
+    onEnd(() => {
+      events.push('end')
+    })
+  })
 
   try {
     await action(store, 'errorAction', async () => {
@@ -303,14 +305,7 @@ test('has onAction listener', async () => {
   }
 
   is(catched, err)
-  equal(events, [
-    'errorAction',
-    'errorAction',
-    'error',
-    'error',
-    'end',
-    'end'
-  ])
+  equal(events, ['errorAction', 'errorAction', 'error', 'error', 'end', 'end'])
   equal(errors, ['error-in-action'])
 
   events = []
@@ -325,28 +320,26 @@ test('has onAction listener', async () => {
 })
 
 test('onAction race', async () => {
-  let errors: string[] = []
-  let events: string[] = []
   let store = atom(0)
-  let raceDelay = 0
+  let acc: any = {}
 
-  let unbind = onAction(store, ({ actionName, onError, onEnd }) => {
-    events.push(`${actionName}-${raceDelay}`)
+  let unbind = onAction(store, ({ actionName, onError, onEnd, id }) => {
+    acc[id] = [`${actionName}-${id}`]
     onError(({ error }) => {
-      events.push('error')
-      errors.push(error.message)
+      acc[id].push('error')
+      acc[id].push(error.message)
     })
     onEnd(() => {
-      events.push('end')
+      acc[id].push('end')
     })
   })
 
-  onSet(store, ({ newValue }) => {
-    events.push(newValue.toString())
+  let unbindOnSet = onSet(store, ({ newValue }) => {
+    let id = store[actionId]
+    if (id) acc[id].push(newValue.toString())
   })
 
   let myAction = action(store, 'my-store', async (s, d) => {
-    raceDelay = d
     await delay(d)
     s.set(d)
   })
@@ -356,21 +349,13 @@ test('onAction race', async () => {
 
   await delay(50)
 
-  equal(events, [
-    'my-store-40',
-    'my-store-10',
-    '10',
-    'end',
-    'end',
-    '40',
-    'end',
-    'end'
-  ])
-  /**
-   * Correct result
-   */
-  // equal(events, ['my-store-40', '40', 'end', 'my-store-10', '10', 'end'])
+  equal(acc, {
+    '14': ['my-store-14', '40', 'end'],
+    '15': ['my-store-15', '10', 'end']
+  })
+
   unbind()
+  unbindOnSet()
 })
 
 test.run()
