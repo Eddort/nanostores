@@ -285,6 +285,15 @@ test('has onAction listener', async () => {
   })
   is('action' in store, true)
 
+  let unbind2 = onAction(
+    store,
+    ({ actionName, onError, onEnd }) => {
+      events.push(actionName)
+      onError(() => { events.push('error') })
+      onEnd(() => { events.push('end') })
+    }
+  )
+
   try {
     await action(store, 'errorAction', async () => {
       throw err
@@ -294,8 +303,23 @@ test('has onAction listener', async () => {
   }
 
   is(catched, err)
-  equal(events, ['errorAction', 'error', 'end'])
+  equal(events, [
+    'errorAction',
+    'errorAction',
+    'error',
+    'error',
+    'end',
+    'end'
+  ])
   equal(errors, ['error-in-action'])
+
+  events = []
+  unbind2()
+
+  let run = action(store, 'action', async () => {})
+  await run()
+  await run()
+  equal(events, ['action', 'end', 'action', 'end'])
 
   unbind()
 })
